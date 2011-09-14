@@ -45,7 +45,7 @@
         #{/ifnot}
 
         #{if field.type == 'text'}
-            #{elasticsearch.textField name:field.name, value:(currentObject ? currentObject[field.name] : null) /}
+            #{elasticSearch.textField name:field.name, value:(currentObject ? currentObject[field.name] : null) /}
         #{/if}
 
     %{ } }%

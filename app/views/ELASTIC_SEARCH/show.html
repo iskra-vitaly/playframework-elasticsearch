@@ -43,7 +43,7 @@
             %{ throw new play.exceptions.TagInternalException('Field not found -> ' + fieldName) }%
         #{/ifnot}
 
-        #{elasticsearch.textField name:field.name, value:(currentObject ? currentObject[field.name] : null) /}
+        #{elasticSearch.textField name:field.name, value:(currentObject ? currentObject[field.name] : null) /}
 
     %{ } }%
 
