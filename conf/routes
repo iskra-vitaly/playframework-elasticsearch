@@ -11,9 +11,9 @@ GET     /?                      elasticsearch.ElasticSearchAdmin.index
 GET   /public/              	   staticDir:public
 
 #{elasticSearch.types}
-GET			/?											${type.controllerClass.name.substring(12).replace('$','')}.index
-GET			/${type.controllerName}/search				${type.controllerClass.name.substring(12).replace('$','')}.search
-POST		/${type.controllerName}/search				${type.controllerClass.name.substring(12).replace('$','')}.search
+GET         /?                                          ${type.controllerClass.name.substring(12).replace('$','')}.index
+GET         /${type.controllerName}/search              ${type.controllerClass.name.substring(12).replace('$','')}.search
+POST        /${type.controllerName}/search              ${type.controllerClass.name.substring(12).replace('$','')}.search
 #{/elasticSearch.types}
 
 
