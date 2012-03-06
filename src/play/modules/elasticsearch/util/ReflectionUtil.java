@@ -19,20 +19,19 @@
 package play.modules.elasticsearch.util;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
-import java.math.BigDecimal;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import play.Logger;
+import play.modules.elasticsearch.mapping.MappingUtil;
 
 /**
  * The Class ReflectionUtil.
@@ -45,8 +44,8 @@ public abstract class ReflectionUtil {
 	/** The Constant classFieldsCache. */
 	private static final ConcurrentMap<String, List<Field>> classFieldsCache = new ConcurrentHashMap<String, List<Field>>();
 
-	/** The Constant DATE_FORMAT. */
-	public static final String DATE_FORMAT = "MM/dd/yyyy HH:mm:ss.SSS";
+	/** Constructor cache */
+	private static final ConcurrentMap<Class<?>, Constructor<?>> classConstructorCache = new ConcurrentHashMap<Class<?>, Constructor<?>>();
 
 	/**
 	 * Instantiates a new reflection util.
@@ -55,10 +54,17 @@ public abstract class ReflectionUtil {
 		// private
 	}
 
+	public static void clearCache() {
+		annotationFieldsCache.clear();
+		classFieldsCache.clear();
+		classConstructorCache.clear();
+	}
+
 	/**
 	 * Gets the all fields.
-	 *
-	 * @param originalClass the original class
+	 * 
+	 * @param originalClass
+	 *            the original class
 	 * @return the all fields
 	 */
 	public static List<Field> getAllFields(final Class<?> originalClass) {
@@ -89,7 +95,8 @@ public abstract class ReflectionUtil {
 
 		// Check Count
 		if (count > 10) {
-			Logger.warn("Too many iterations on ReflectionUtil.getAllFields() - class: " + originalClass);
+			Logger.warn("Too many iterations on ReflectionUtil.getAllFields() - class: "
+					+ originalClass);
 		}
 
 		// make the list unmodifiable
@@ -101,12 +108,14 @@ public abstract class ReflectionUtil {
 		// Return List
 		return unmodifiableFields;
 	}
-	
+
 	/**
 	 * Gets the field value.
-	 *
-	 * @param object the object
-	 * @param field the field
+	 * 
+	 * @param object
+	 *            the object
+	 * @param field
+	 *            the field
 	 * @return the field value
 	 */
 	public static Object getFieldValue(Object object, Field field) {
@@ -122,9 +131,11 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Gets the field value.
-	 *
-	 * @param object the object
-	 * @param fieldName the field name
+	 * 
+	 * @param object
+	 *            the object
+	 * @param fieldName
+	 *            the field name
 	 * @return the field value
 	 */
 	public static Object getFieldValue(Object object, String fieldName) {
@@ -150,9 +161,11 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Gets the all field names with type.
-	 *
-	 * @param originalClass the original class
-	 * @param type the type
+	 * 
+	 * @param originalClass
+	 *            the original class
+	 * @param type
+	 *            the type
 	 * @return the all field names with type
 	 */
 	public static List<String> getAllFieldNamesWithType(final Class<?> originalClass, Class<?> type) {
@@ -179,7 +192,8 @@ public abstract class ReflectionUtil {
 
 		// Check Count
 		if (count > 10) {
-			Logger.warn("Too many iterations on ReflectionUtil.getFieldNamesWithType() - class: " + originalClass + " - " + type);
+			Logger.warn("Too many iterations on ReflectionUtil.getFieldNamesWithType() - class: "
+					+ originalClass + " - " + type);
 		}
 
 		// Return List
@@ -188,9 +202,11 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Checks for annotation.
-	 *
-	 * @param field the field
-	 * @param clazz the clazz
+	 * 
+	 * @param field
+	 *            the field
+	 * @param clazz
+	 *            the clazz
 	 * @return true, if successful
 	 */
 	public static boolean hasAnnotation(Field field, Class<? extends Annotation> clazz) {
@@ -199,40 +215,67 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * New instance.
-	 *
-	 * @param className the class name
+	 * 
+	 * @param className
+	 *            the class name
 	 * @return the object
 	 */
 	public static Object newInstance(String className) {
 		Class<?> clazz;
 		try {
 			clazz = Class.forName(className);
-			return clazz.newInstance();
+			return newInstance(clazz);
 		} catch (ClassNotFoundException e) {
-			throw new RuntimeException(e);
-		} catch (InstantiationException e) {
-			throw new RuntimeException(e);
-		} catch (IllegalAccessException e) {
 			throw new RuntimeException(e);
 		}
 	}
 
 	/**
 	 * New instance.
-	 *
-	 * @param <T> the generic type
-	 * @param clazz the clazz
+	 * 
+	 * @param <T>
+	 *            the generic type
+	 * @param clazz
+	 *            the clazz
 	 * @return the t
 	 */
 	public static <T> T newInstance(Class<T> clazz) {
-		try {
-			return clazz.newInstance();
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+		Constructor<T> ctor = null;
+
+		if (classConstructorCache.containsKey(clazz)) {
+			ctor = (Constructor<T>) classConstructorCache.get(clazz);
+		} else {
+			// Try public ctor first
+			try {
+				ctor = clazz.getConstructor();
+			} catch (Exception e) {
+				// Swallow, no public ctor
+			}
+
+			// Next, try non-public ctor
+			try {
+				ctor = clazz.getDeclaredConstructor();
+				ctor.setAccessible(true);
+			} catch (Exception e) {
+				// Swallow, no non-public ctor
+			}
+
+			classConstructorCache.put(clazz, ctor);
+		}
+
+		if (ctor != null) {
+			try {
+				return ctor.newInstance();
+			} catch (Exception e) {
+				throw new RuntimeException("Cannot instantiate " + clazz, e);
+			}
+		} else {
+			throw new RuntimeException("No default constructor for " + clazz);
 		}
 	}
-	
-	private static AnnotationFieldsHolder getAnnotationHolder(Class<?> mainClass, Class<? extends Annotation> annotationClass) {
+
+	private static AnnotationFieldsHolder getAnnotationHolder(Class<?> mainClass,
+			Class<? extends Annotation> annotationClass) {
 		final ClassAnnotationHolder holder = new ClassAnnotationHolder(mainClass, annotationClass);
 
 		// get from cache, if present
@@ -261,15 +304,18 @@ public abstract class ReflectionUtil {
 		// Return List
 		return fieldHolder;
 	}
-	
+
 	/**
 	 * Gets the fields with annotation.
-	 *
-	 * @param mainClass the main class
-	 * @param annotationClass the annotation class
+	 * 
+	 * @param mainClass
+	 *            the main class
+	 * @param annotationClass
+	 *            the annotation class
 	 * @return the fields with annotation
 	 */
-	public static List<Field> getFieldsWithAnnotation(Class<?> mainClass, Class<? extends Annotation> annotationClass) {
+	public static List<Field> getFieldsWithAnnotation(Class<?> mainClass,
+			Class<? extends Annotation> annotationClass) {
 
 		final AnnotationFieldsHolder holder = getAnnotationHolder(mainClass, annotationClass);
 		return holder.getFields();
@@ -277,12 +323,15 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Gets the field names with annotation.
-	 *
-	 * @param mainClass the main class
-	 * @param annotationClass the annotation class
+	 * 
+	 * @param mainClass
+	 *            the main class
+	 * @param annotationClass
+	 *            the annotation class
 	 * @return the field names with annotation
 	 */
-	public static List<String> getFieldNamesWithAnnotation(Class<?> mainClass, Class<? extends Annotation> annotationClass) {
+	public static List<String> getFieldNamesWithAnnotation(Class<?> mainClass,
+			Class<? extends Annotation> annotationClass) {
 
 		final AnnotationFieldsHolder holder = getAnnotationHolder(mainClass, annotationClass);
 		return holder.getFieldNames();
@@ -290,12 +339,15 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Gets the all field names without annotation.
-	 *
-	 * @param clazz the clazz
-	 * @param annotationClass the annotation class
+	 * 
+	 * @param clazz
+	 *            the clazz
+	 * @param annotationClass
+	 *            the annotation class
 	 * @return the all field names without annotation
 	 */
-	public static List<String> getAllFieldNamesWithoutAnnotation(Class<?> clazz, Class<? extends Annotation> annotationClass) {
+	public static List<String> getAllFieldNamesWithoutAnnotation(Class<?> clazz,
+			Class<? extends Annotation> annotationClass) {
 		String className = clazz.getName() + ".";
 		List<String> fieldNames = new ArrayList<String>();
 
@@ -304,18 +356,21 @@ public abstract class ReflectionUtil {
 				fieldNames.add(className + field.getName());
 			}
 		}
-		
+
 		return fieldNames;
 	}
 
 	/**
 	 * Gets the all fields without annotation.
-	 *
-	 * @param clazz the clazz
-	 * @param annotationClass the annotation class
+	 * 
+	 * @param clazz
+	 *            the clazz
+	 * @param annotationClass
+	 *            the annotation class
 	 * @return the all fields without annotation
 	 */
-	public static List<Field> getAllFieldsWithoutAnnotation(Class<?> clazz, Class<? extends Annotation> annotationClass) {
+	public static List<Field> getAllFieldsWithoutAnnotation(Class<?> clazz,
+			Class<? extends Annotation> annotationClass) {
 		List<Field> fieldsWithoutAnnotation = new ArrayList<Field>();
 
 		for (Field field : getAllFields(clazz)) {
@@ -323,16 +378,19 @@ public abstract class ReflectionUtil {
 				fieldsWithoutAnnotation.add(field);
 			}
 		}
-		
+
 		return fieldsWithoutAnnotation;
 	}
 
 	/**
 	 * Sets the field value.
-	 *
-	 * @param object the object
-	 * @param fieldName the field name
-	 * @param value the value
+	 * 
+	 * @param object
+	 *            the object
+	 * @param fieldName
+	 *            the field name
+	 * @param value
+	 *            the value
 	 */
 	public static void setFieldValue(Object object, String fieldName, Object value) {
 		Field field = getField(object, fieldName);
@@ -341,10 +399,13 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Sets the field value.
-	 *
-	 * @param object the object
-	 * @param field the field
-	 * @param value the value
+	 * 
+	 * @param object
+	 *            the object
+	 * @param field
+	 *            the field
+	 * @param value
+	 *            the value
 	 */
 	private static void setFieldValue(Object object, Field field, Object value) {
 		// make accessible
@@ -354,44 +415,8 @@ public abstract class ReflectionUtil {
 		Class<?> fieldClass = (Class<?>) type;
 
 		try {
-			if (fieldClass.equals(value.getClass())) {
-				// Types match
-				field.set(object, value);
-			} else {
-				// Types do not match, perform conversion where needed
-				if (fieldClass.equals(String.class)) {
-					field.set(object, value.toString());
-				} else if (fieldClass.equals(BigDecimal.class)) {
-					field.set(object, new BigDecimal(value.toString()));
-				} else if (fieldClass.equals(Date.class)) {
-					field.set(object, convertToDate(value));
-					
-				// Use Number intermediary where possible
-				} else if (fieldClass.equals(Integer.class)) {
-					if( value instanceof Number ) {
-						field.set(object, Integer.valueOf(((Number)value).intValue()));
-					} else {
-						field.set(object, Integer.valueOf(value.toString()));
-					}
-				} else if (fieldClass.equals(Long.class)) {
-					if( value instanceof Number ) {
-						field.set(object, Long.valueOf(((Number)value).longValue()));
-					} else {
-						field.set(object, Long.valueOf(value.toString()));
-					}
-				} else if (fieldClass.equals(Double.class)) {
-					if( value instanceof Number ) {
-						field.set(object, Double.valueOf(((Number)value).doubleValue()));
-					} else {
-						field.set(object, Double.valueOf(value.toString()));
-					}
-				
-				// Fallback to simply trying to set the field
-				} else {
-					field.set(object, value);
-				}
-			}
-			
+			value = MappingUtil.convertValue(value, fieldClass);
+			field.set(object, value);
 		} catch (IllegalArgumentException e) {
 			Logger.error(ExceptionUtil.getStackTrace(e));
 		} catch (IllegalAccessException e) {
@@ -401,9 +426,11 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Gets the field.
-	 *
-	 * @param object the object
-	 * @param fieldName the field name
+	 * 
+	 * @param object
+	 *            the object
+	 * @param fieldName
+	 *            the field name
 	 * @return the field
 	 */
 	private static Field getField(final Object object, String fieldName) {
@@ -433,9 +460,11 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Gets the parent class by type.
-	 *
-	 * @param object the object
-	 * @param clazz the clazz
+	 * 
+	 * @param object
+	 *            the object
+	 * @param clazz
+	 *            the clazz
 	 * @return the parent class by type
 	 */
 	public static Class<?> getParentClassByType(Object object, Class<?> clazz) {
@@ -451,8 +480,9 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Checks if is abstract.
-	 *
-	 * @param clazz the clazz
+	 * 
+	 * @param clazz
+	 *            the clazz
 	 * @return true, if is abstract
 	 */
 	public static boolean isAbstract(Class<?> clazz) {
@@ -462,8 +492,9 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Checks if is interface.
-	 *
-	 * @param clazz the clazz
+	 * 
+	 * @param clazz
+	 *            the clazz
 	 * @return true, if is interface
 	 */
 	public static boolean isInterface(Class<?> clazz) {
@@ -473,55 +504,13 @@ public abstract class ReflectionUtil {
 
 	/**
 	 * Checks if is concrete.
-	 *
-	 * @param clazz the clazz
+	 * 
+	 * @param clazz
+	 *            the clazz
 	 * @return true, if is concrete
 	 */
 	public static boolean isConcrete(Class<?> clazz) {
 		return !(isInterface(clazz) || isAbstract(clazz));
-	}
-
-	/**
-	 * Convert to date.
-	 *
-	 * @param value the value
-	 * @return the date
-	 */
-	private static Date convertToDate(Object value) {
-		Date date = null;
-		if (value != null && !"".equals(value)) {
-			if (value instanceof Long) {
-				date = new Date(((Long) value).longValue());
-
-			} else if (value instanceof String) {
-				String val = (String) value;
-				int dateLength = String.valueOf(Long.MAX_VALUE).length();
-				if (dateLength == val.length()) {
-					date = new Date(Long.valueOf(val).longValue());
-				} else {
-					date = getDate(val);
-				}
-			} else {
-				date = (Date) value;
-			}
-		}
-		return date;
-	}
-
-	/**
-	 * Gets the date.
-	 *
-	 * @param val the val
-	 * @return the date
-	 */
-	private static Date getDate(String val) {
-		try {
-			SimpleDateFormat sdf = new SimpleDateFormat(DATE_FORMAT);
-			return sdf.parse(val);
-		} catch (Throwable t) {
-			Logger.error(ExceptionUtil.getStackTrace(t), val);
-		}
-		return null;
 	}
 
 	/**
@@ -537,9 +526,11 @@ public abstract class ReflectionUtil {
 
 		/**
 		 * Instantiates a new class annotation holder.
-		 *
-		 * @param mainClass the main class
-		 * @param annotationClass the annotation class
+		 * 
+		 * @param mainClass
+		 *            the main class
+		 * @param annotationClass
+		 *            the annotation class
 		 */
 		public ClassAnnotationHolder(Class<?> mainClass, Class<?> annotationClass) {
 			super();
@@ -549,7 +540,7 @@ public abstract class ReflectionUtil {
 
 		/**
 		 * Gets the main class.
-		 *
+		 * 
 		 * @return the main class
 		 */
 		@SuppressWarnings("unused")
@@ -559,7 +550,7 @@ public abstract class ReflectionUtil {
 
 		/**
 		 * Gets the annotation class.
-		 *
+		 * 
 		 * @return the annotation class
 		 */
 		@SuppressWarnings("unused")
@@ -629,8 +620,9 @@ public abstract class ReflectionUtil {
 
 		/**
 		 * Instantiates a new annotation fields holder.
-		 *
-		 * @param fields the fields
+		 * 
+		 * @param fields
+		 *            the fields
 		 */
 		public AnnotationFieldsHolder(List<Field> fields) {
 			super();
@@ -640,7 +632,7 @@ public abstract class ReflectionUtil {
 
 		/**
 		 * Gets the fields.
-		 *
+		 * 
 		 * @return the fields
 		 */
 		public List<Field> getFields() {
@@ -649,7 +641,7 @@ public abstract class ReflectionUtil {
 
 		/**
 		 * Gets the field names.
-		 *
+		 * 
 		 * @return the field names
 		 */
 		public List<String> getFieldNames() {
