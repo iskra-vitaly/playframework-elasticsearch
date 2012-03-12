@@ -4,10 +4,13 @@ import java.lang.reflect.Field;
 import java.util.Collection;
 
 import play.modules.elasticsearch.annotations.ElasticSearchEmbedded;
+import play.modules.elasticsearch.annotations.ElasticSearchFieldMapper;
+import play.modules.elasticsearch.annotations.ElasticSearchModelMapper;
 import play.modules.elasticsearch.mapping.impl.CollectionFieldMapper;
 import play.modules.elasticsearch.mapping.impl.EmbeddedFieldMapper;
 import play.modules.elasticsearch.mapping.impl.PlayModelMapper;
 import play.modules.elasticsearch.mapping.impl.SimpleFieldMapper;
+import play.modules.elasticsearch.util.ReflectionUtil;
 
 /**
  * Factory for {@link ModelMapper}s
@@ -31,8 +34,18 @@ public class MapperFactory {
 			throw new MappingException("Class must be annotated with @ElasticSearchable");
 		}
 
+
 		if (play.db.Model.class.isAssignableFrom(clazz)) {
-			return (ModelMapper<M>) new PlayModelMapper<play.db.Model>((Class<play.db.Model>) clazz);
+            if (clazz.isAnnotationPresent(ElasticSearchModelMapper.class)) {
+                ElasticSearchModelMapper meta = clazz.getAnnotation(ElasticSearchModelMapper.class);
+                if (ModelMapper.class.isAssignableFrom(meta.value())) {
+                    return (ModelMapper<M>) ReflectionUtil.newInstance(meta.value(), clazz);
+                } else {
+                    throw new MappingException("Mapper should realize ModelMapper interface: " + meta.value());
+                }
+            } else {
+                return (ModelMapper<M>) new PlayModelMapper<play.db.Model>((Class<play.db.Model>) clazz);
+            }
 		} else {
 			throw new MappingException(
 					"No mapper available for non-play.db.Model models at this time");
@@ -72,6 +85,14 @@ public class MapperFactory {
 
 		if (Collection.class.isAssignableFrom(field.getType())) {
 			return new CollectionFieldMapper<M>(field, prefix);
+
+        } else if (field.isAnnotationPresent(ElasticSearchFieldMapper.class)) {
+            ElasticSearchFieldMapper meta = field.getAnnotation(ElasticSearchFieldMapper.class);
+            if (FieldMapper.class.isAssignableFrom(meta.value())) {
+                return (FieldMapper<M>) ReflectionUtil.newInstance(meta.value(), field, prefix != null ? prefix : "");
+            } else {
+                throw new MappingException("Mapper should realize FieldMapper interface: " + meta.value());
+            }
 
 		} else if (field.isAnnotationPresent(ElasticSearchEmbedded.class)) {
 			return new EmbeddedFieldMapper<M>(field, prefix);

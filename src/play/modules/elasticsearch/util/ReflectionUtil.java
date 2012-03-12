@@ -230,6 +230,50 @@ public abstract class ReflectionUtil {
 		}
 	}
 
+    /**
+     * New instance.
+     *
+     * @param <T>
+     *            the generic type
+     * @param clazz
+     *            the clazz
+     * @return the t
+     */
+    public static <T> T newInstance(Class<T> clazz) {
+        Constructor<T> ctor = null;
+
+        if (classConstructorCache.containsKey(clazz)) {
+            ctor = (Constructor<T>) classConstructorCache.get(clazz);
+        } else {
+            // Try public ctor first
+            try {
+                ctor = clazz.getConstructor();
+            } catch (Exception e) {
+                // Swallow, no public ctor
+            }
+
+            // Next, try non-public ctor
+            try {
+                ctor = clazz.getDeclaredConstructor();
+                ctor.setAccessible(true);
+            } catch (Exception e) {
+                // Swallow, no non-public ctor
+            }
+
+            classConstructorCache.put(clazz, ctor);
+        }
+
+        if (ctor != null) {
+            try {
+                return ctor.newInstance();
+            } catch (Exception e) {
+                throw new RuntimeException("Cannot instantiate " + clazz, e);
+            }
+        } else {
+            throw new RuntimeException("No default constructor for " + clazz);
+        }
+    }
+    
 	/**
 	 * New instance.
 	 * 
@@ -237,24 +281,30 @@ public abstract class ReflectionUtil {
 	 *            the generic type
 	 * @param clazz
 	 *            the clazz
+     * @param initargs
+     *            the constructor arguments
 	 * @return the t
 	 */
-	public static <T> T newInstance(Class<T> clazz) {
+	public static <T> T newInstance(Class<T> clazz, Object... initargs) {
 		Constructor<T> ctor = null;
 
 		if (classConstructorCache.containsKey(clazz)) {
 			ctor = (Constructor<T>) classConstructorCache.get(clazz);
 		} else {
+            Class[] initargsTypes = new Class[initargs.length];
+            for (int i = 0; i < initargs.length; i++) {
+                initargsTypes[i] = initargs[i].getClass();
+            }
 			// Try public ctor first
 			try {
-				ctor = clazz.getConstructor();
+				ctor = clazz.getConstructor(initargsTypes);
 			} catch (Exception e) {
 				// Swallow, no public ctor
 			}
 
 			// Next, try non-public ctor
 			try {
-				ctor = clazz.getDeclaredConstructor();
+				ctor = clazz.getDeclaredConstructor(initargsTypes);
 				ctor.setAccessible(true);
 			} catch (Exception e) {
 				// Swallow, no non-public ctor
@@ -265,7 +315,7 @@ public abstract class ReflectionUtil {
 
 		if (ctor != null) {
 			try {
-				return ctor.newInstance();
+				return ctor.newInstance(initargs);
 			} catch (Exception e) {
 				throw new RuntimeException("Cannot instantiate " + clazz, e);
 			}

@@ -8,4 +8,4 @@ lib
 eclipse
 commands.pyc
 build.properties
-modules/
+/modules/

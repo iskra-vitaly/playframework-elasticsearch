@@ -29,7 +29,7 @@ import play.modules.elasticsearch.util.ReflectionUtil;
 public class PlayModelMapper<M extends Model> implements ModelMapper<M> {
 
 	/** The play-specific fields to ignore. */
-	private static List<String> IGNORE_FIELDS = new ArrayList<String>();
+	protected static List<String> IGNORE_FIELDS = new ArrayList<String>();
 	static {
 		IGNORE_FIELDS.add("avoidCascadeSaveLoops");
 		IGNORE_FIELDS.add("willBeSaved");
